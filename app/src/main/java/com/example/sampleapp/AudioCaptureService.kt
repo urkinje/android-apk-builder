@@ -6,6 +6,7 @@ import android.media.*
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import kotlin.math.abs
 
 class AudioCaptureService : Service() {
     private lateinit var audioManager: AudioManager
@@ -32,6 +33,7 @@ class AudioCaptureService : Service() {
         }
         startForeground(1, notif)
 
+        // Enable AEC and NS to clean up the audio, but we will amplify it
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
@@ -40,7 +42,8 @@ class AudioCaptureService : Service() {
         val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
         try {
-            audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            // Using VOICE_COMMUNICATION source often gives better mic gain
+            audioRecord = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
             
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -56,6 +59,7 @@ class AudioCaptureService : Service() {
                 audioTrack?.preferredDevice = wiredDevices.first()
             }
 
+            // Set track volume to max
             audioTrack?.setVolume(1.0f)
 
             audioRecord?.startRecording()
@@ -68,11 +72,23 @@ class AudioCaptureService : Service() {
                     val read = audioRecord?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
                         var maxAmp = 0
+                        val amplification = 4.0 // 4x louder
+                        
                         for (i in 0 until read) {
-                            val amp = Math.abs(shortBuffer[i].toInt())
+                            // Amplify the audio
+                            var sample = (shortBuffer[i] * amplification).toInt()
+                            
+                            // Prevent clipping (distortion) by keeping it within 16-bit limits
+                            if (sample > Short.MAX_VALUE) sample = Short.MAX_VALUE.toInt()
+                            if (sample < Short.MIN_VALUE) sample = Short.MIN_VALUE.toInt()
+                            
+                            shortBuffer[i] = sample.toShort()
+
+                            // Calculate volume for the UI bar
+                            val amp = abs(sample)
                             if (amp > maxAmp) maxAmp = amp
                         }
-                        // Send volume to MainActivity
+                        
                         MainActivity.currentVolume = ((maxAmp / 32767.0) * 100).toInt()
                         
                         audioTrack?.write(shortBuffer, 0, read)
