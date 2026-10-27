@@ -21,10 +21,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var volumeText: TextView
     private var isCapturing = false
     private val handler = Handler(Looper.getMainLooper())
+    
+    // We will use a simple static variable for the volume
+    companion object {
+        @Volatile var currentVolume = 0
+    }
+
     private val updateRunnable = object : Runnable {
         override fun run() {
             if (isCapturing) {
-                val vol = AudioCaptureService.instance?.currentVolume ?: 0
+                val vol = currentVolume
                 volumeText.text = "Mic Volume: $vol% [${"|".repeat(vol / 5)}]"
                 handler.postDelayed(this, 200)
             }
