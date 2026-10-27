@@ -14,8 +14,8 @@ class AudioCaptureService : Service() {
     private var isRecording = false
     private var thread: Thread? = null
 
-    // 0 = Both, 1 = Left, 2 = Right
-    @Volatile var activeChannel = 0
+    @Volatile var activeChannel = 0 // 0 = Both, 1 = Left, 2 = Right
+    @Volatile var currentVolume = 0 // 0 to 100 for UI
 
     override fun onCreate() {
         super.onCreate()
@@ -35,34 +35,35 @@ class AudioCaptureService : Service() {
         }
         startForeground(1, notif)
 
-        // Force Bluetooth Mic routing
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
 
-        val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
-        val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        // We will use MONO for recording because Bluetooth SCO often fails with STEREO
+        val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
         try {
-            audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
             
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setBufferSizeInBytes(trackBufSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            // 🔥 THIS IS THE MAGIC LINE: Route playback to wired headphones instead of Bluetooth
+            // Route to wired headphones
             val wiredDevices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter {
                 it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
             }
             if (wiredDevices.isNotEmpty()) {
                 audioTrack?.preferredDevice = wiredDevices.first()
-                Log.d("DualBud", "Routing audio to wired headphones!")
-            } else {
-                Log.d("DualBud", "No wired headphones found. Playing through phone speaker.")
+                Log.d("DualBud", "Routing to wired headset")
             }
+
+            // Set volume to max for testing
+            audioTrack?.setVolume(1.0f)
 
             audioRecord?.startRecording()
             audioTrack?.play()
@@ -73,21 +74,15 @@ class AudioCaptureService : Service() {
                 while (isRecording) {
                     val read = audioRecord?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
-                        for (i in 0 until read step 2) {
-                            val left = shortBuffer[i]
-                            val right = if (i + 1 < read) shortBuffer[i + 1] else 0
-
-                            when (activeChannel) {
-                                1 -> { // Left only
-                                    shortBuffer[i] = left
-                                    if (i + 1 < read) shortBuffer[i + 1] = left
-                                }
-                                2 -> { // Right only
-                                    shortBuffer[i] = right
-                                    if (i + 1 < read) shortBuffer[i + 1] = right
-                                }
-                            }
+                        var maxAmp = 0
+                        for (i in 0 until read) {
+                            val amp = Math.abs(shortBuffer[i].toInt())
+                            if (amp > maxAmp) maxAmp = amp
                         }
+                        // Calculate volume percentage (0-100)
+                        currentVolume = ((maxAmp / 32767.0) * 100).toInt()
+
+                        // Play the audio to wired earphones
                         audioTrack?.write(shortBuffer, 0, read)
                     }
                 }
