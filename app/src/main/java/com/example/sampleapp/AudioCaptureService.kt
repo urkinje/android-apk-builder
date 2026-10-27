@@ -14,9 +14,6 @@ class AudioCaptureService : Service() {
     private var isRecording = false
     private var thread: Thread? = null
 
-    @Volatile var activeChannel = 0 // 0 = Both, 1 = Left, 2 = Right
-    @Volatile var currentVolume = 0 // 0 to 100 for UI
-
     override fun onCreate() {
         super.onCreate()
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
@@ -39,7 +36,6 @@ class AudioCaptureService : Service() {
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
 
-        // We will use MONO for recording because Bluetooth SCO often fails with STEREO
         val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
 
@@ -53,16 +49,13 @@ class AudioCaptureService : Service() {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            // Route to wired headphones
             val wiredDevices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter {
                 it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
             }
             if (wiredDevices.isNotEmpty()) {
                 audioTrack?.preferredDevice = wiredDevices.first()
-                Log.d("DualBud", "Routing to wired headset")
             }
 
-            // Set volume to max for testing
             audioTrack?.setVolume(1.0f)
 
             audioRecord?.startRecording()
@@ -79,10 +72,9 @@ class AudioCaptureService : Service() {
                             val amp = Math.abs(shortBuffer[i].toInt())
                             if (amp > maxAmp) maxAmp = amp
                         }
-                        // Calculate volume percentage (0-100)
-                        currentVolume = ((maxAmp / 32767.0) * 100).toInt()
-
-                        // Play the audio to wired earphones
+                        // Send volume to MainActivity
+                        MainActivity.currentVolume = ((maxAmp / 32767.0) * 100).toInt()
+                        
                         audioTrack?.write(shortBuffer, 0, read)
                     }
                 }
