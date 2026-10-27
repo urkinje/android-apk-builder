@@ -24,7 +24,7 @@ class MainActivity : AppCompatActivity() {
     private val updateRunnable = object : Runnable {
         override fun run() {
             if (isCapturing) {
-                val vol = AudioCaptureService.currentVolume
+                val vol = AudioCaptureService.instance?.currentVolume ?: 0
                 volumeText.text = "Mic Volume: $vol% [${"|".repeat(vol / 5)}]"
                 handler.postDelayed(this, 200)
             }
