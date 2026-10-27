@@ -2,11 +2,12 @@ package com.example.sampleapp
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -17,6 +18,18 @@ import androidx.core.app.ActivityCompat
 class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private lateinit var textView: TextView
+    private lateinit var volumeText: TextView
+    private var isCapturing = false
+    private val handler = Handler(Looper.getMainLooper())
+    private val updateRunnable = object : Runnable {
+        override fun run() {
+            if (isCapturing) {
+                val vol = AudioCaptureService.currentVolume
+                volumeText.text = "Mic Volume: $vol% [${"|".repeat(vol / 5)}]"
+                handler.postDelayed(this, 200)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,7 +56,7 @@ class MainActivity : AppCompatActivity() {
                 val btDevices = devices.filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
                 
                 if (btDevices.isEmpty()) {
-                    textView.text = "No Bluetooth mics found. Connect earbuds first."
+                    textView.text = "No Bluetooth mics found."
                 } else {
                     val names = btDevices.joinToString("\n") { "Name: ${it.productName}\nType: ${it.type}" }
                     textView.text = "Found Inputs:\n$names"
@@ -51,11 +64,28 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        volumeText = TextView(this).apply {
+            text = "Mic Volume: 0%"
+            textSize = 18f
+            setPadding(0, 20, 0, 20)
+        }
+
         val btnStart = Button(this).apply {
-            text = "3. Start Capture"
+            text = "3. Start / Stop Listening"
             setOnClickListener {
-                startForegroundService(Intent(this@MainActivity, AudioCaptureService::class.java))
-                Toast.makeText(this@MainActivity, "Started", Toast.LENGTH_SHORT).show()
+                val intent = Intent(this@MainActivity, AudioCaptureService::class.java)
+                if (!isCapturing) {
+                    startForegroundService(intent)
+                    Toast.makeText(this@MainActivity, "Started. Speak into buds!", Toast.LENGTH_SHORT).show()
+                    text = "3. Stop Listening"
+                    isCapturing = true
+                    handler.post(updateRunnable)
+                } else {
+                    stopService(intent)
+                    Toast.makeText(this@MainActivity, "Stopped", Toast.LENGTH_SHORT).show()
+                    text = "3. Start / Stop Listening"
+                    isCapturing = false
+                }
             }
         }
 
@@ -67,7 +97,9 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btnPermissions)
         layout.addView(btnScan)
         layout.addView(textView)
+        layout.addView(volumeText)
         layout.addView(btnStart)
+        
         setContentView(layout)
     }
 }
