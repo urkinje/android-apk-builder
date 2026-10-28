@@ -185,21 +185,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         val searchInput = EditText(this).apply {
-            hint = "Search settings..."
-            setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            
-            // THIS IS THE SECRET UNLOCK TRIGGER
-            setOnEditorActionListener { _, actionId, _ ->
-                if (searchInput.text.toString().uppercase() == "YIMA") {
-                    settingsLayout.visibility = View.GONE
-                    stealthLayout.visibility = View.VISIBLE
-                    searchInput.setText("") // clear it
-                    true
-                } else {
-                    false
-                }
-            }
+    hint = "Search settings..."
+    setBackgroundColor(android.graphics.Color.TRANSPARENT)
+    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+    
+    // THIS IS THE SECRET UNLOCK TRIGGER
+    setOnEditorActionListener { _, actionId, _ ->
+        if (this.text.toString().uppercase() == "YIMA") {
+            settingsLayout.visibility = View.GONE
+            stealthLayout.visibility = View.VISIBLE
+            this.setText("") // clear it
+            true
+        } else {
+            false
+        }
+    }
         }
 
         searchLayout.addView(searchIcon)
