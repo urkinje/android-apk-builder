@@ -50,7 +50,7 @@ class AudioCaptureService : Service() {
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
 
-        // We will record in MONO (because SCO is mono) but play back in STEREO
+        // Record in MONO (Bluetooth SCO), play back in STEREO (Both ears)
         val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
 
@@ -86,7 +86,6 @@ class AudioCaptureService : Service() {
                 audioTrack?.preferredDevice = wiredDevices.first()
             }
 
-            // Max out the playback volume
             audioTrack?.setVolume(1.0f)
 
             audioRecord?.startRecording()
@@ -101,10 +100,10 @@ class AudioCaptureService : Service() {
                     val read = audioRecord?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
                         var maxAmp = 0
-                        // Multiply by 1.5 here for extra hardware boost
+                        // Boost hardware gain by 1.5x on top of slider
                         val gain = MainActivity.currentGain * 1.5f 
 
-                        // Convert Mono to Stereo (Duplicate the audio to both ears)
+                        // Convert Mono to Stereo
                         for (i in 0 until read) {
                             var sample = (shortBuffer[i] * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                             
