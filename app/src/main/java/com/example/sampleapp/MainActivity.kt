@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     stopService(intent)
                     isCapturing = false
-                    btnStart.text = "START LISTENING"
+                    this.text = "START LISTENING"
                 }
             }
         }
