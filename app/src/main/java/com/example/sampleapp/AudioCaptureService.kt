@@ -42,21 +42,26 @@ class AudioCaptureService : Service() {
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
 
-        // STEREO recording so we can separate Left and Right
-        val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
-        val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        val bufSize = AudioRecord.getMinBufferSize(44100, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        val trackBufSize = AudioTrack.getMinBufferSize(44100, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
 
         try {
-            audioRecord = AudioRecord(MediaRecorder.AudioSource.VOICE_COMMUNICATION, 16000, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            // 🔥 USING UNPROCESSED SOURCE to bypass Android's Mono Mixing
+            var source = MediaRecorder.AudioSource.UNPROCESSED
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                source = MediaRecorder.AudioSource.VOICE_RECOGNITION
+            }
+
+            audioRecord = AudioRecord(source, 44100, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
             
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(44100).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
                 .setBufferSizeInBytes(trackBufSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
 
-            // FEATURE 3: High-Pass Filter (Kill the bass, boost the voice)
+            // High-Pass Filter
             equalizer = Equalizer(0, audioTrack!!.audioSessionId).apply {
                 enabled = true
                 val bands = numberOfBands.toInt()
@@ -65,7 +70,7 @@ class AudioCaptureService : Service() {
                     if (centerFreq < 300) {
                         setBandLevel(i.toShort(), -1500) // Drop low frequencies
                     } else {
-                        setBandLevel(i.toShort(), 500) // Slight boost to voices
+                        setBandLevel(i.toShort(), 500) // Boost voices
                     }
                 }
             }
@@ -87,39 +92,43 @@ class AudioCaptureService : Service() {
                     val read = audioRecord?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
                         var maxAmp = 0
-                        val gain = MainActivity.currentGain // FEATURE 2: Gain Slider
-                        val mode = MainActivity.activeChannel // FEATURE 1: Left/Right/Both
+                        val gain = MainActivity.currentGain
+                        val mode = MainActivity.activeChannel
 
                         for (i in 0 until read step 2) {
                             var left = shortBuffer[i].toInt()
                             var right = if (i + 1 < read) shortBuffer[i + 1].toInt() else 0
 
-                            // Apply Bud Isolation
+                            // FEATURE 1: True Bud Isolation
                             when (mode) {
-                                1 -> right = 0 // Left only
-                                2 -> left = 0  // Right only
+                                1 -> { 
+                                    // Bud A: Send Left mic to BOTH ears of wired earphones
+                                    right = left 
+                                }
+                                2 -> { 
+                                    // Bud B: Send Right mic to BOTH ears of wired earphones
+                                    left = right 
+                                }
                             }
 
-                            // Apply Gain (Amplification)
+                            // Apply Gain
                             left = (left * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                             right = (right * gain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
 
                             shortBuffer[i] = left.toShort()
                             if (i + 1 < read) shortBuffer[i + 1] = right.toShort()
 
-                            // Calculate Volume for UI
                             val amp = maxOf(abs(left), abs(right))
                             if (amp > maxAmp) maxAmp = amp
                         }
                         
                         MainActivity.currentVolume = ((maxAmp / 32767.0) * 100).toInt()
                         
-                        // FEATURE 4: Save to file if enabled
+                        // File saving logic...
                         if (MainActivity.isRecordingToFile) {
                             if (fileOutputStream == null) {
-                                val file = File(getExternalFilesDir(null), "DualBud_Record.wav")
+                                val file = File(getExternalFilesDir(null), "DualBud_Record.pcm")
                                 fileOutputStream = FileOutputStream(file)
-                                // (In a real app, you write a WAV header here. Skipping for simplicity)
                             }
                             val byteBuffer = java.nio.ByteBuffer.allocate(read * 2)
                             byteBuffer.asShortBuffer().put(shortBuffer, 0, read)
