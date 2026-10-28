@@ -179,31 +179,30 @@ class MainActivity : AppCompatActivity() {
             setPadding(20, 10, 20, 10)
         }
         
-        val searchIcon = TextView(this).apply {
-            text = "🔍 "
-            textSize = 18f
-        }
-
         val searchInput = EditText(this).apply {
-    hint = "Search settings..."
-    setBackgroundColor(android.graphics.Color.TRANSPARENT)
-    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-    
-    // THIS IS THE SECRET UNLOCK TRIGGER
-    setOnEditorActionListener { _, actionId, _ ->
-        if (this.text.toString().uppercase() == "YIMA") {
-            settingsLayout.visibility = View.GONE
-            stealthLayout.visibility = View.VISIBLE
-            this.setText("") // clear it
-            true
-        } else {
-            false
-        }
-    }
+            hint = "Search settings..."
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        searchLayout.addView(searchIcon)
+        // Clickable search icon to trigger the unlock
+        val searchBtn = TextView(this).apply {
+            text = "🔍"
+            textSize = 20f
+            setPadding(15, 0, 15, 0)
+            setOnClickListener {
+                if (searchInput.text.toString().uppercase() == "YIMA") {
+                    settingsLayout.visibility = View.GONE
+                    stealthLayout.visibility = View.VISIBLE
+                    searchInput.setText("") // clear it
+                } else {
+                    Toast.makeText(this@MainActivity, "Not found", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         searchLayout.addView(searchInput)
+        searchLayout.addView(searchBtn)
 
         val btnBack = Button(this).apply {
             text = "Back to Game"
@@ -217,10 +216,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(searchLayout)
         layout.addView(btnBack)
         
-        // Push back button to bottom
-        layout.setGravity(Gravity.TOP)
-        btnBack.setPadding(0, 50, 0, 0)
-
         return layout
     }
 
