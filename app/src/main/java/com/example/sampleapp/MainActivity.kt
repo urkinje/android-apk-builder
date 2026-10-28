@@ -233,8 +233,16 @@ class MainActivity : AppCompatActivity() {
         val btnPermissions = Button(this).apply {
             text = "1. Grant Permissions"
             setOnClickListener {
-                val perms = mutableListOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.MODIFY_AUDIO_SETTINGS)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) perms.add(Manifest.permission.BLUETOOTH_CONNECT)
+                val perms = mutableListOf(
+                    Manifest.permission.RECORD_AUDIO, 
+                    Manifest.permission.MODIFY_AUDIO_SETTINGS
+                )
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    perms.add(Manifest.permission.BLUETOOTH_CONNECT)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    perms.add(Manifest.permission.POST_NOTIFICATIONS) // Crucial for foreground service on Android 13+
+                }
                 ActivityCompat.requestPermissions(this@MainActivity, perms.toTypedArray(), 1)
             }
         }
