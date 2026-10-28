@@ -6,6 +6,7 @@ import android.media.*
 import android.media.audiofx.Equalizer
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -19,6 +20,7 @@ class AudioCaptureService : Service() {
     private var isRecording = false
     private var thread: Thread? = null
     private var fileOutputStream: FileOutputStream? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +40,11 @@ class AudioCaptureService : Service() {
         }
         startForeground(1, notif)
 
+        // Keep CPU awake while recording
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DualBud::AudioWakeLock")
+        wakeLock?.acquire(10*60*1000L) // 10 minutes max, but released in onDestroy
+
         // Force Bluetooth SCO Mode
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.startBluetoothSco()
@@ -48,8 +55,7 @@ class AudioCaptureService : Service() {
         val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
 
         try {
-            // 🔥 SWITCH TO VOICE_RECOGNITION: This tells the phone to disable noise cancellation 
-            // and give us the raw, loudest possible microphone feed!
+            // VOICE_RECOGNITION gives us the raw, loudest possible microphone feed
             audioRecord = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
             
             audioTrack = AudioTrack.Builder()
@@ -142,6 +148,11 @@ class AudioCaptureService : Service() {
         audioTrack?.release()
         equalizer?.release()
         fileOutputStream?.close()
+        
+        if (wakeLock?.isHeld == true) {
+            wakeLock?.release()
+        }
+        
         audioManager.stopBluetoothSco()
         audioManager.isBluetoothScoOn = false
         audioManager.mode = AudioManager.MODE_NORMAL
