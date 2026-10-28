@@ -1,6 +1,7 @@
 package com.example.sampleapp
 
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.content.Intent
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -10,20 +11,26 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.animation.LinearInterpolator
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
     private lateinit var audioManager: AudioManager
     private var isCapturing = false
     private val handler = Handler(Looper.getMainLooper())
 
-    // The secret layout
-    private lateinit var calculatorLayout: LinearLayout
+    // The layouts
+    private lateinit var gameLayout: LinearLayout
+    private lateinit var settingsLayout: LinearLayout
     private lateinit var stealthLayout: LinearLayout
-    private lateinit var calcDisplay: TextView
-    private var calcText = ""
+    
+    // Game elements
+    private lateinit var coinImage: TextView
+    private lateinit var streakText: TextView
+    private var currentStreak = 0
 
     companion object {
         @Volatile var currentVolume = 0
@@ -32,123 +39,200 @@ class MainActivity : AppCompatActivity() {
         @Volatile var isRecordingToFile = false
     }
 
-    private val updateRunnable = object : Runnable {
-        override fun run() {
-            if (isCapturing) {
-                val vol = currentVolume
-                // In stealth mode, we just show the volume bar
-                calcDisplay.text = "Vol: $vol% [${"|".repeat(vol / 5)}]"
-                handler.postDelayed(this, 200)
-            }
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        supportActionBar?.hide()
 
-        // The root container
         val rootLayout = FrameLayout(this)
         
-        // 1. Build the Calculator UI
-        calculatorLayout = buildCalculatorUI()
-        
-        // 2. Build the Hidden Stealth UI
+        // Build all 3 screens
+        gameLayout = buildGameUI()
+        settingsLayout = buildSettingsUI()
         stealthLayout = buildStealthUI()
-        stealthLayout.visibility = View.GONE // Hide it by default
+        
+        // Hide settings and stealth by default
+        settingsLayout.visibility = View.GONE 
+        stealthLayout.visibility = View.GONE 
 
-        rootLayout.addView(calculatorLayout)
+        rootLayout.addView(gameLayout)
+        rootLayout.addView(settingsLayout)
         rootLayout.addView(stealthLayout)
         
         setContentView(rootLayout)
     }
 
     // ==========================================
-    // THE CALCULATOR (DISGUISE)
+    // 1. THE COIN FLIP GAME (MAIN SCREEN)
     // ==========================================
-    private fun buildCalculatorUI(): LinearLayout {
+    private fun buildGameUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(android.graphics.Color.parseColor("#1E1E1E"))
+            setBackgroundColor(android.graphics.Color.parseColor("#F5F5F5"))
+            gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
         }
 
-        calcDisplay = TextView(this).apply {
-            text = ""
-            textSize = 50f
-            setTextColor(android.graphics.Color.WHITE)
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            setPadding(30, 100, 30, 50)
+        // Top bar for the Settings Gear icon
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(20, 20, 20, 0)
         }
-        layout.addView(calcDisplay, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-
-        val buttons = arrayOf(
-            arrayOf("7", "8", "9", "/"),
-            arrayOf("4", "5", "6", "*"),
-            arrayOf("1", "2", "3", "-"),
-            arrayOf("C", "0", "=", "+")
-        )
-
-        for (row in buttons) {
-            val rowLayout = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        val btnSettings = TextView(this).apply {
+            text = "⚙️"
+            textSize = 30f
+            setOnClickListener {
+                gameLayout.visibility = View.GONE
+                settingsLayout.visibility = View.VISIBLE
             }
-            for (btnText in row) {
-                val btn = Button(this).apply {
-                    text = btnText
-                    textSize = 30f
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-                    setOnClickListener { onCalcButtonPressed(btnText) }
-                }
-                rowLayout.addView(btn)
-            }
-            layout.addView(rowLayout)
         }
+        topBar.addView(btnSettings)
+
+        val title = TextView(this).apply {
+            text = "Coin Flip Challenge"
+            textSize = 28f
+            setTextColor(android.graphics.Color.BLACK)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 20)
+        }
+
+        coinImage = TextView(this).apply {
+            text = "🪙"
+            textSize = 100f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 30)
+        }
+
+        streakText = TextView(this).apply {
+            text = "Heads in a row: 0"
+            textSize = 18f
+            setTextColor(android.graphics.Color.DKGRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 50)
+        }
+
+        val btnFlip = Button(this).apply {
+            text = "FLIP COIN"
+            textSize = 20f
+            setOnClickListener { flipCoin() }
+        }
+
+        layout.addView(topBar)
+        layout.addView(title)
+        layout.addView(coinImage)
+        layout.addView(streakText)
+        layout.addView(btnFlip)
+        
         return layout
     }
 
-    private fun onCalcButtonPressed(btn: String) {
-        // If the app is currently listening, pressing a button brings back the UI
-        if (isCapturing) {
-             calculatorLayout.visibility = View.VISIBLE
-             stealthLayout.visibility = View.GONE
-             calcDisplay.text = "Secret Mode Active"
-             return
+    private fun flipCoin() {
+        gameLayout.isEnabled = false
+        
+        val animator = ObjectAnimator.ofFloat(coinImage, "rotationY", 0f, 1440f).apply {
+            duration = 1000
+            interpolator = LinearInterpolator()
         }
 
-        if (btn == "C") {
-            calcText = ""
-            calcDisplay.text = ""
-        } else if (btn == "=") {
-            if (calcText == "123") {
-                // SECRET CODE ENTERED: Reveal the Stealth UI!
-                calculatorLayout.visibility = View.GONE
-                stealthLayout.visibility = View.VISIBLE
-                calcText = ""
-            } else {
-                // Normal calculator math
-                try {
-                    calcDisplay.text = calcText 
-                } catch (e: Exception) {
-                    calcDisplay.text = "Error"
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                gameLayout.isEnabled = true
+                val isHeads = Random.nextBoolean()
+                
+                if (isHeads) {
+                    coinImage.text = "👑"
+                    currentStreak++
+                    streakText.text = "Heads in a row: $currentStreak"
+                } else {
+                    coinImage.text = "🦅"
+                    currentStreak = 0
+                    streakText.text = "Heads in a row: 0"
                 }
-                calcText = ""
             }
-        } else {
-            calcText += btn
-            calcDisplay.text = calcText
-        }
+        })
+        animator.start()
     }
 
     // ==========================================
-    // THE HIDDEN CONTROLS (STEALTH UI)
+    // 2. THE SETTINGS SCREEN (WITH SECRET SEARCH)
+    // ==========================================
+    private fun buildSettingsUI(): LinearLayout {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(android.graphics.Color.WHITE)
+            setPadding(40, 100, 40, 40)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
+        }
+
+        val title = TextView(this).apply {
+            text = "Settings"
+            textSize = 32f
+            setTextColor(android.graphics.Color.BLACK)
+            setPadding(0, 0, 0, 30)
+        }
+
+        // The Search Bar
+        val searchLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(android.graphics.Color.parseColor("#EEEEEE"))
+            setPadding(20, 10, 20, 10)
+        }
+        
+        val searchIcon = TextView(this).apply {
+            text = "🔍 "
+            textSize = 18f
+        }
+
+        val searchInput = EditText(this).apply {
+            hint = "Search settings..."
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            
+            // THIS IS THE SECRET UNLOCK TRIGGER
+            setOnEditorActionListener { _, actionId, _ ->
+                if (searchInput.text.toString().uppercase() == "YIMA") {
+                    settingsLayout.visibility = View.GONE
+                    stealthLayout.visibility = View.VISIBLE
+                    searchInput.setText("") // clear it
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+
+        searchLayout.addView(searchIcon)
+        searchLayout.addView(searchInput)
+
+        val btnBack = Button(this).apply {
+            text = "Back to Game"
+            setOnClickListener {
+                settingsLayout.visibility = View.GONE
+                gameLayout.visibility = View.VISIBLE
+            }
+        }
+
+        layout.addView(title)
+        layout.addView(searchLayout)
+        layout.addView(btnBack)
+        
+        // Push back button to bottom
+        layout.setGravity(Gravity.TOP)
+        btnBack.setPadding(0, 50, 0, 0)
+
+        return layout
+    }
+
+    // ==========================================
+    // 3. THE HIDDEN CONTROLS (STEALTH UI)
     // ==========================================
     private fun buildStealthUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(50, 50, 50, 50)
             setBackgroundColor(android.graphics.Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
         }
 
         val btnPermissions = Button(this).apply {
@@ -195,10 +279,9 @@ class MainActivity : AppCompatActivity() {
                 if (!isCapturing) {
                     startForegroundService(intent)
                     isCapturing = true
-                    handler.post(updateRunnable)
-                    // INSTANTLY disguise the app as a calculator
+                    // INSTANTLY disguise the app as the Coin Game
                     stealthLayout.visibility = View.GONE
-                    calculatorLayout.visibility = View.VISIBLE
+                    gameLayout.visibility = View.VISIBLE
                 } else {
                     stopService(intent)
                     isCapturing = false
@@ -208,10 +291,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         val btnBack = Button(this).apply {
-            text = "Back to Calculator"
+            text = "Hide Controls"
             setOnClickListener {
                 stealthLayout.visibility = View.GONE
-                calculatorLayout.visibility = View.VISIBLE
+                gameLayout.visibility = View.VISIBLE
             }
         }
 
