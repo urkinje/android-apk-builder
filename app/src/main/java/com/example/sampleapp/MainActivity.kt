@@ -25,13 +25,22 @@ class MainActivity : AppCompatActivity() {
     
     private lateinit var coinImage: TextView
     private lateinit var streakText: TextView
-    private lateinit var errorText: TextView // Shows errors on screen!
+    private lateinit var errorText: TextView 
     private var currentStreak = 0
 
     companion object {
         @Volatile var currentVolume = 0
-        @Volatile var currentGain = 10.0f 
-        @Volatile var errorMessage = "" // Stores crashes
+        
+        // Mode 0: Normal, Mode 1: Whisper
+        @Volatile var currentMode = 0 
+        
+        // Separate memory for each slider!
+        @Volatile var normalGain = 15.0f 
+        @Volatile var whisperGain = 25.0f 
+        @Volatile var currentGain = 15.0f 
+        
+        @Volatile var isRecordingToFile = false
+        @Volatile var errorMessage = "" 
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,11 +66,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // If the service crashed, show the error here!
         if (errorMessage.isNotEmpty()) {
             errorText.text = "SERVICE CRASHED:\n$errorMessage"
             errorText.visibility = View.VISIBLE
-            errorMessage = "" // clear after showing
+            errorMessage = "" 
         }
     }
 
@@ -111,7 +119,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 50)
         }
 
-        // ERROR MESSAGE DISPLAY
         errorText = TextView(this).apply {
             text = ""
             textSize = 14f
@@ -182,8 +189,9 @@ class MainActivity : AppCompatActivity() {
         }
         
         val searchInput = EditText(this).apply {
-            hint = "Search settings..."
+            hint = "Enter PIN..."
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
@@ -192,12 +200,12 @@ class MainActivity : AppCompatActivity() {
             textSize = 20f
             setPadding(15, 0, 15, 0)
             setOnClickListener {
-                if (searchInput.text.toString().uppercase() == "YIMA") {
+                if (searchInput.text.toString() == "2026") {
                     settingsLayout.visibility = View.GONE
                     stealthLayout.visibility = View.VISIBLE
                     searchInput.setText("") 
                 } else {
-                    Toast.makeText(this@MainActivity, "Not found", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Incorrect PIN", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -247,18 +255,48 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val gainText = TextView(this).apply { text = "Sensitivity (Gain): ${currentGain.toInt()}x" }
+        // MODE SELECTOR BUTTON
+        val modeBtn = Button(this).apply {
+            text = if (currentMode == 0) "MODE: Normal Voice" else "MODE: Whisper"
+            setOnClickListener {
+                if (currentMode == 0) {
+                    currentMode = 1
+                    currentGain = whisperGain
+                    text = "MODE: Whisper"
+                    Toast.makeText(this@MainActivity, "Switched to Whisper Mode", Toast.LENGTH_SHORT).show()
+                } else {
+                    currentMode = 0
+                    currentGain = normalGain
+                    text = "MODE: Normal Voice"
+                    Toast.makeText(this@MainActivity, "Switched to Normal Mode", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+        val gainText = TextView(this).apply { text = "Sensitivity: ${currentGain.toInt()}x" }
         val seekBar = SeekBar(this).apply {
-            max = 20
-            progress = 10
+            max = 30
+            
+            // Load the saved slider for the current mode
+            progress = if (currentMode == 0) normalGain.toInt() else whisperGain.toInt()
+            
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     currentGain = (if (progress < 1) 1 else progress).toFloat()
-                    gainText.text = "Sensitivity (Gain): ${currentGain.toInt()}x"
+                    
+                    // Save the slider to the correct mode variable
+                    if (currentMode == 0) normalGain = currentGain else whisperGain = currentGain
+                    
+                    gainText.text = "Sensitivity: ${currentGain.toInt()}x"
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
                 override fun onStopTrackingTouch(seekBar: SeekBar?) {}
             })
+        }
+
+        val checkRecord = CheckBox(this).apply {
+            text = "Save Audio to File"
+            setOnCheckedChangeListener { _, isChecked -> isRecordingToFile = isChecked }
         }
 
         val btnStart = Button(this).apply {
@@ -288,8 +326,10 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(btnPermissions)
         layout.addView(btnScan)
+        layout.addView(modeBtn)
         layout.addView(gainText)
         layout.addView(seekBar)
+        layout.addView(checkRecord)
         layout.addView(btnStart)
         layout.addView(btnBack)
         
