@@ -44,41 +44,26 @@ class AudioCaptureService : Service() {
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "DualBud::AudioWakeLock")
         wakeLock?.acquire(10*60*1000L)
 
+        // Force Bluetooth SCO
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.startBluetoothSco()
         audioManager.isBluetoothScoOn = true
 
-        val bufSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-        val trackBufSize = AudioTrack.getMinBufferSize(16000, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        // Use a standard 8kHz phone-call sample rate, this forces the hardware to stay open
+        val sampleRate = 8000 
+        val bufSize = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        val trackBufSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
 
         try {
-            val source = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                MediaRecorder.AudioSource.UNPROCESSED
-            } else {
-                MediaRecorder.AudioSource.VOICE_RECOGNITION
-            }
-
-            audioRecord = AudioRecord(source, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
+            // 🔥 Using standard MIC source to disable Android's aggressive noise-canceling
+            audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, bufSize)
             
             audioTrack = AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(16000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
+                .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build())
                 .setBufferSizeInBytes(trackBufSize)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
-
-            equalizer = Equalizer(0, audioTrack!!.audioSessionId).apply {
-                enabled = true
-                val bands = numberOfBands.toInt()
-                for (i in 0 until bands) {
-                    val centerFreq = getCenterFreq(i.toShort()) / 1000
-                    if (centerFreq < 100) { 
-                        setBandLevel(i.toShort(), -500) 
-                    } else {
-                        setBandLevel(i.toShort(), 300) 
-                    }
-                }
-            }
 
             val wiredDevices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter {
                 it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET || it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES || it.type == AudioDeviceInfo.TYPE_USB_HEADSET
@@ -99,21 +84,14 @@ class AudioCaptureService : Service() {
                     val read = audioRecord?.read(shortBuffer, 0, shortBuffer.size) ?: 0
                     if (read > 0) {
                         var maxAmp = 0
-                        
-                        // Read the active mode and gain from MainActivity
                         val isWhisperMode = (MainActivity.currentMode == 1)
                         var gain = MainActivity.currentGain
 
                         for (i in 0 until read) {
                             val originalSample = shortBuffer[i].toInt()
                             
-                            val finalGain = if (isWhisperMode) {
-                                // WHISPER MODE: Extreme flat boost
-                                gain * 3.0f
-                            } else {
-                                // NORMAL MODE: Dynamic Clear Voice
-                                if (abs(originalSample) < 1000) gain * 2.0f else gain
-                            }
+                            // Apply massive gain
+                            val finalGain = if (isWhisperMode) gain * 5.0f else gain * 2.0f
 
                             var sample = (originalSample * finalGain).toInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                             
@@ -125,16 +103,6 @@ class AudioCaptureService : Service() {
                         }
                         
                         MainActivity.currentVolume = ((maxAmp / 32767.0) * 100).toInt()
-                        
-                        if (MainActivity.isRecordingToFile) {
-                            if (fileOutputStream == null) {
-                                val file = File(getExternalFilesDir(null), "DualBud_Record.pcm")
-                                fileOutputStream = FileOutputStream(file)
-                            }
-                            val byteBuffer = java.nio.ByteBuffer.allocate(read * 4) 
-                            byteBuffer.asShortBuffer().put(stereoBuffer, 0, read * 2)
-                            fileOutputStream?.write(byteBuffer.array())
-                        }
                         
                         audioTrack?.write(stereoBuffer, 0, read * 2)
                     }
@@ -155,7 +123,6 @@ class AudioCaptureService : Service() {
         audioRecord?.release()
         audioTrack?.stop()
         audioTrack?.release()
-        equalizer?.release()
         fileOutputStream?.close()
         
         if (wakeLock?.isHeld == true) {
