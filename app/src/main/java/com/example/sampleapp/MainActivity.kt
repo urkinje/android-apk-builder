@@ -28,17 +28,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var errorText: TextView 
     private var currentStreak = 0
 
+    // Game Settings
+    private var headsEmoji = "👑"
+    private var tailsEmoji = "🦅"
+    private var headsProbability = 50 // 50% chance of heads by default
+
     companion object {
         @Volatile var currentVolume = 0
-        
-        // Mode 0: Normal, Mode 1: Whisper
-        @Volatile var currentMode = 0 
-        
-        // Separate memory for each slider!
+        @Volatile var currentMode = 0 // 0: Normal, 1: Whisper
         @Volatile var normalGain = 15.0f 
         @Volatile var whisperGain = 25.0f 
         @Volatile var currentGain = 15.0f 
-        
         @Volatile var isRecordingToFile = false
         @Volatile var errorMessage = "" 
     }
@@ -73,6 +73,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ==========================================
+    // 1. THE COIN FLIP GAME
+    // ==========================================
     private fun buildGameUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -153,12 +156,15 @@ class MainActivity : AppCompatActivity() {
         animator.addListener(object : android.animation.AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: android.animation.Animator) {
                 gameLayout.isEnabled = true
-                if (Random.nextBoolean()) {
-                    coinImage.text = "👑"
+                
+                // Use the probability set in settings
+                val roll = Random.nextInt(100)
+                if (roll < headsProbability) {
+                    coinImage.text = headsEmoji
                     currentStreak++
                     streakText.text = "Heads in a row: $currentStreak"
                 } else {
-                    coinImage.text = "🦅"
+                    coinImage.text = tailsEmoji
                     currentStreak = 0
                     streakText.text = "Heads in a row: 0"
                 }
@@ -167,6 +173,9 @@ class MainActivity : AppCompatActivity() {
         animator.start()
     }
 
+    // ==========================================
+    // 2. THE SETTINGS SCREEN
+    // ==========================================
     private fun buildSettingsUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -182,6 +191,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 0, 0, 30)
         }
 
+        // The Search Bar (acts as a hidden PIN field)
         val searchLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(android.graphics.Color.parseColor("#EEEEEE"))
@@ -189,9 +199,10 @@ class MainActivity : AppCompatActivity() {
         }
         
         val searchInput = EditText(this).apply {
-            hint = "Enter PIN..."
+            hint = "Search settings..." // Fake hint
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            // No password dots, just normal text so it looks like a search bar
+            inputType = android.text.InputType.TYPE_CLASS_TEXT 
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
@@ -205,13 +216,73 @@ class MainActivity : AppCompatActivity() {
                     stealthLayout.visibility = View.VISIBLE
                     searchInput.setText("") 
                 } else {
-                    Toast.makeText(this@MainActivity, "Incorrect PIN", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "No results found for '${searchInput.text}'", Toast.LENGTH_SHORT).show()
                 }
             }
         }
 
         searchLayout.addView(searchInput)
         searchLayout.addView(searchBtn)
+
+        // FAKE SETTING 1: Heads Emoji
+        val headsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 30, 0, 0)
+        }
+        val headsLabel = TextView(this).apply { text = "Heads Logo:  "; textSize = 18f }
+        val headsSpinner = Spinner(this).apply {
+            val emojis = arrayOf("👑", "🦁", "🔥", "⚡", "⭐")
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, emojis)
+            setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    headsEmoji = emojis[position]
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            })
+        }
+        headsLayout.addView(headsLabel)
+        headsLayout.addView(headsSpinner)
+
+        // FAKE SETTING 2: Tails Emoji
+        val tailsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 20, 0, 0)
+        }
+        val tailsLabel = TextView(this).apply { text = "Tails Logo:     "; textSize = 18f }
+        val tailsSpinner = Spinner(this).apply {
+            val emojis = arrayOf("🦅", "🐍", "💧", "🌑", "🎲")
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, emojis)
+            setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    tailsEmoji = emojis[position]
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            })
+        }
+        tailsLayout.addView(tailsLabel)
+        tailsLayout.addView(tailsSpinner)
+
+        // FAKE SETTING 3: Probability
+        val probLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 20, 0, 0)
+        }
+        val probLabel = TextView(this).apply { text = "Flip Probability: "; textSize = 18f }
+        val probSpinner = Spinner(this).apply {
+            val probs = arrayOf("50% Heads", "60% Heads", "70% Heads", "80% Heads", "90% Heads")
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, probs)
+            setOnItemSelectedListener(object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    headsProbability = 50 + (position * 10)
+                }
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+            })
+        }
+        probLayout.addView(probLabel)
+        probLayout.addView(probSpinner)
 
         val btnBack = Button(this).apply {
             text = "Back to Game"
@@ -223,11 +294,22 @@ class MainActivity : AppCompatActivity() {
 
         layout.addView(title)
         layout.addView(searchLayout)
+        layout.addView(headsLayout)
+        layout.addView(tailsLayout)
+        layout.addView(probLayout)
+        
+        val spacer = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+        layout.addView(spacer)
         layout.addView(btnBack)
         
         return layout
     }
 
+    // ==========================================
+    // 3. THE HIDDEN CONTROLS (STEALTH UI)
+    // ==========================================
     private fun buildStealthUI(): LinearLayout {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -255,7 +337,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // MODE SELECTOR BUTTON
         val modeBtn = Button(this).apply {
             text = if (currentMode == 0) "MODE: Normal Voice" else "MODE: Whisper"
             setOnClickListener {
@@ -276,17 +357,11 @@ class MainActivity : AppCompatActivity() {
         val gainText = TextView(this).apply { text = "Sensitivity: ${currentGain.toInt()}x" }
         val seekBar = SeekBar(this).apply {
             max = 30
-            
-            // Load the saved slider for the current mode
             progress = if (currentMode == 0) normalGain.toInt() else whisperGain.toInt()
-            
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     currentGain = (if (progress < 1) 1 else progress).toFloat()
-                    
-                    // Save the slider to the correct mode variable
                     if (currentMode == 0) normalGain = currentGain else whisperGain = currentGain
-                    
                     gainText.text = "Sensitivity: ${currentGain.toInt()}x"
                 }
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {}
